@@ -81,20 +81,6 @@ class NotificationRepository:
         channel_row.attempt_count += 1
         self.db.flush()
 
-    def get_due_retries(self, now: datetime, limit: int = 100) -> list[NotificationChannel]:
-        """Channels in FAILED state whose next_retry_at has passed and haven't exhausted retries."""
-        stmt = (
-            select(NotificationChannel)
-            .where(
-                NotificationChannel.status == ChannelDeliveryStatus.FAILED,
-                NotificationChannel.next_retry_at.is_not(None),
-                NotificationChannel.next_retry_at <= now,
-                NotificationChannel.attempt_count < NotificationChannel.max_retries,
-            )
-            .limit(limit)
-        )
-        return list(self.db.execute(stmt).scalars().all())
-
     # --- DeliveryAttempt (audit log) ---
 
     def record_attempt(

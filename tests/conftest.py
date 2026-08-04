@@ -48,7 +48,7 @@ def fake_redis():
 def client(db_engine, db_session, fake_redis, monkeypatch):
     """
     TestClient wired to the SQLite test DB. Also:
-      - Swaps the rate limiter's Redis client for fakeredis
+      - Swaps the rate limiter's and circuit breaker's Redis client for fakeredis
       - Makes queue.enqueue run the worker job synchronously in-process,
         instead of requiring a live RQ worker, so API tests can assert on
         final delivery state without sleeping/polling for a background worker.
@@ -61,8 +61,10 @@ def client(db_engine, db_session, fake_redis, monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
 
     import app.api.routes.notifications as notif_routes
+    import app.services.channels.factory as channel_factory
 
     notif_routes.rate_limiter.redis = fake_redis
+    channel_factory.circuit_breaker.redis = fake_redis
 
     class _SyncQueue:
         """

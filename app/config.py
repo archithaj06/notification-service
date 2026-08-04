@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     max_retries: int = 3
     retry_base_delay_seconds: int = 30  # exponential backoff base: 30s, 60s, 120s
 
+    # --- Circuit breaker (per channel) ---
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_recovery_seconds: int = 60
+
     # --- App ---
     app_name: str = "Notification Service"
     log_level: str = "INFO"

@@ -7,7 +7,12 @@ from app.config import settings
 from app.core.db import get_db
 from app.core.queue import redis_conn
 from app.repositories.notification_repository import NotificationRepository
-from app.schemas.notification import NotificationCreateRequest, NotificationResponse
+from app.schemas.notification import (
+    BatchNotificationCreateRequest,
+    BatchNotificationResponse,
+    NotificationCreateRequest,
+    NotificationResponse,
+)
 from app.services.notification_service import (
     NoEligibleChannelsError,
     NotificationService,
@@ -48,6 +53,33 @@ def create_notification(req: NotificationCreateRequest, db: Session = Depends(ge
         )
 
     return notification
+
+
+@router.post("/batch", response_model=BatchNotificationResponse, status_code=status.HTTP_207_MULTI_STATUS)
+def create_batch_notifications(req: BatchNotificationCreateRequest, db: Session = Depends(get_db)):
+    """
+    Sends one message to many users at once (bonus: Batch API). Each
+    recipient is independently subject to preferences/rate-limiting/idempotency,
+    so 207 Multi-Status is returned with a per-user outcome -- one user being
+    rate-limited or opted out doesn't fail the batch for everyone else.
+    """
+    service = NotificationService(db)
+    try:
+        results = service.create_batch_notifications(req, rate_limiter)
+    except TemplateNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("batch_notification_creation_failed", extra={"user_count": len(req.user_ids)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create batch notifications"
+        )
+
+    created_count = sum(1 for r in results if r["status"] == "created")
+    return {
+        "total_requested": len(req.user_ids),
+        "created_count": created_count,
+        "results": results,
+    }
 
 
 @router.get("/analytics/stats")
