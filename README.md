@@ -85,7 +85,9 @@ Full interactive docs (OpenAPI/Swagger) are auto-generated at `/docs` when the s
 | GET | `/notifications/analytics/stats` | *(bonus)* Sent/failed counts grouped by channel and status. |
 | GET | `/health` | Liveness check. |
 
-### Example: send a templated, high-priority notification
+### Example: send a high-priority notification with variable substitution
+
+This uses raw `subject`/`body` with `{{placeholders}}` (no `template_name` needed — omit it entirely, since the `templates` table is empty by default; see Assumptions above).
 
 ```bash
 curl -X POST http://localhost:8000/notifications \
@@ -106,7 +108,7 @@ curl -X POST http://localhost:8000/notifications \
 - **Authentication/authorization** is out of scope, assumed to be handled by an API gateway upstream (per the assignment's example assumptions).
 - **User existence** isn't validated — `user_id` is treated as an opaque string; user data is assumed to live in a separate service.
 - **Preference default is opt-in**: if a user has never set a preference for a channel, they're treated as opted *in* to it. Requiring an explicit opt-in row before a brand-new user can receive anything would silently drop notifications for everyone who hasn't visited a settings page. Opt-*out* is always explicit.
-- **Templates are stored in the database** (not in-memory) so they survive restarts. No template-management endpoints were required by the spec, so templates are currently seeded directly (see `app/models/template.py`); adding CRUD endpoints would be a natural follow-up.
+- **Templates are stored in the database** (not in-memory) so they survive restarts, but no template-management endpoints or seed data were required by the spec, so the `templates` table starts empty. Send `subject`/`body` directly to test without one, or insert a row manually (`INSERT INTO templates (id, name, subject, body) VALUES (...)`) to test `template_name`. Adding CRUD endpoints (and/or a startup seed) would be a natural follow-up.
 - **Mock providers "deliver" synchronously**: a successful mock send is recorded as `DELIVERED` immediately, since there's no real provider webhook to simulate an async `SENT → DELIVERED` confirmation step. A production integration would stay at `SENT` until a provider delivery webhook fires.
 - **A notification with a pending retry reports `processing`, not `failed`**, at the top level — only a channel that has *exhausted* its retries (or delivered) is treated as terminal for the purposes of the aggregate status. (This was actually a real bug caught and fixed during development — see DESIGN.md.)
 - **Idempotency key scope is global** (not scoped per-user) since the spec didn't specify; a client-supplied key is assumed to already be unique enough (e.g. a UUID or a domain-specific key like `order-4521-shipped`). The commit that persists a new notification catches the DB's unique-constraint violation and recovers by returning the already-committed row, so two truly concurrent requests sharing a key never 500 each other — see `tests/unit/test_notification_service_idempotency_race.py`.
